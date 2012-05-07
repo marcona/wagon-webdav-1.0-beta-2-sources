@@ -2,6 +2,13 @@ package org.apache.maven.wagon;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import org.apache.commons.httpclient.Credentials;
+import org.apache.commons.httpclient.HostConfiguration;
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.HttpMethod;
+import org.apache.commons.httpclient.NTCredentials;
+import org.apache.commons.httpclient.UsernamePasswordCredentials;
+import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.maven.wagon.authentication.AuthenticationInfo;
 import org.apache.maven.wagon.proxy.ProxyInfo;
 import org.codehaus.plexus.util.FileUtils;
@@ -74,6 +81,30 @@ public class CodjoTest extends WagonTestCase {
     }
 
 
+    public void test_getMethod() throws Exception {
+        HttpClient client = new HttpClient();
+
+        HostConfiguration config = client.getHostConfiguration();
+        config.setProxy("ehttp1", 80);
+
+        client.setHostConfiguration(config);
+
+
+        Credentials defaultcreds = new UsernamePasswordCredentials("codjo", "$amsung666");
+        client.getState().setCredentials("BASIC", "http://repo.codjo.net/", defaultcreds);
+
+        Credentials proxyCreds = new NTCredentials("MARCONA", "ELIOTTA7","ehttp1.groupe.ad.agf.fr","GROUPE");
+        client.getState().setProxyCredentials(null, "ehttp1.groupe.ad.agf.fr", proxyCreds);
+
+        HttpMethod method = new GetMethod("http://repo.codjo.net/maven2/net/codjo/pyp/codjo-pyp/1.5/codjo-pyp-1.5.pom");
+        client.executeMethod(method);
+
+        byte[] responseBody = method.getResponseBody();
+        System.out.println(new String(responseBody));
+        method.releaseConnection();
+    }
+
+
     @Override
     public void testWagonPutDirectory() throws Exception {
         setupRepositories();
@@ -81,7 +112,6 @@ public class CodjoTest extends WagonTestCase {
         setupWagonTestingFixtures();
 
         Wagon wagon = getWagon();
-
 
         if (wagon.supportsDirectoryCopy()) {
             sourceFile = new File(FileTestUtils.getTestOutputDir(), "directory-copy");
@@ -159,6 +189,7 @@ public class CodjoTest extends WagonTestCase {
     public void testWagon() throws Exception {
         ;
     }
+
 
     @Override
     public void testWagonPutDirectoryDeepDestination() throws Exception {
