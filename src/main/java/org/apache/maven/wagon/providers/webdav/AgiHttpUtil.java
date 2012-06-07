@@ -17,7 +17,7 @@ public class AgiHttpUtil {
         //See http://jira.codehaus.org/browse/WAGON-82
 
 //        String login = "agif";
-//        String password = "agif";
+//        String password = "SFQSQDQ";
 //        String proxyUser = "GROUPE\\MARCONA";
 //        String proxyPassword = "XXXX";
 //        String proxyHost = "ehttp1";
