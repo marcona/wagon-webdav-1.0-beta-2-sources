@@ -16,6 +16,22 @@ package org.apache.maven.wagon.providers.webdav;
  * limitations under the License.
  */
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.TimeZone;
+import java.util.logging.Logger;
 import org.apache.commons.httpclient.HttpException;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.HttpURL;
@@ -39,256 +55,216 @@ import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.URL;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
-import java.util.Properties;
-import java.util.TimeZone;
-
 /**
  * <p>WebDavWagon</p>
- * 
+ *
  * <p>Allows using a webdav remote repository for downloads and deployments</p>
- * 
+ *
  * <p>TODO: webdav https server is not tested</p>
- * 
+ *
  * @author <a href="mailto:hisidro@exist.com">Henry Isidro</a>
  * @author <a href="mailto:joakim@erdfelt.com">Joakim Erdfelt</a>
  * @author <a href="mailto:carlos@apache.org">Carlos Sanchez</a>
  */
 public class WebDavWagon
-    extends AbstractWagon
-{
-    private static final TimeZone TIMESTAMP_TIME_ZONE = TimeZone.getTimeZone( "GMT" );
-
+      extends AbstractWagon {
+    private static final TimeZone TIMESTAMP_TIME_ZONE = TimeZone.getTimeZone("GMT");
+    private static Logger LOG = Logger.getLogger("WebDavWagon");
     private static String wagonVersion;
 
-    private DateFormat dateFormat = new SimpleDateFormat( "EEE, dd-MMM-yy HH:mm:ss zzz", Locale.US );
+    private DateFormat dateFormat = new SimpleDateFormat("EEE, dd-MMM-yy HH:mm:ss zzz", Locale.US);
 
     private CorrectedWebdavResource webdavResource;
 
-    public WebDavWagon()
-    {
-        dateFormat.setTimeZone( TIMESTAMP_TIME_ZONE );
 
-        if ( wagonVersion == null )
-        {
+    public WebDavWagon() {
+        dateFormat.setTimeZone(TIMESTAMP_TIME_ZONE);
+        if (wagonVersion == null) {
             URL pomUrl = this.getClass()
-                .getResource( "/META-INF/maven/org.apache.maven.wagon/wagon-webdav/pom.properties" );
-            if ( pomUrl == null )
-            {
+                  .getResource("/META-INF/maven/org.apache.maven.wagon/wagon-webdav/pom.properties");
+            if (pomUrl == null) {
                 wagonVersion = "";
             }
-            else
-            {
+            else {
                 Properties props = new Properties();
-                try
-                {
-                    props.load( pomUrl.openStream() );
-                    wagonVersion = props.getProperty( "version" );
-                    System.out.println( "WAGON_VERSION: " + wagonVersion );
+                try {
+                    props.load(pomUrl.openStream());
+                    wagonVersion = props.getProperty("version");
+                    System.out.println("WAGON_VERSION: " + wagonVersion);
                 }
-                catch ( IOException e )
-                {
+                catch (IOException e) {
                     wagonVersion = "";
                 }
             }
         }
     }
 
+
     /**
      * Opens a connection via web-dav resource
-     * 
-     * @throws AuthenticationException 
-     * @throws ConnectionException
      */
     public void openConnection()
-        throws AuthenticationException, ConnectionException
-    {
-        final boolean hasProxy = ( proxyInfo != null && proxyInfo.getUserName() != null );
-        final boolean hasAuthentication = ( authenticationInfo != null && authenticationInfo.getUserName() != null );
+          throws AuthenticationException, ConnectionException {
+        final boolean hasProxy = (proxyInfo != null && proxyInfo.getUserName() != null);
+        final boolean hasAuthentication = (authenticationInfo != null && authenticationInfo.getUserName() != null);
 
-        String url = getURL( repository );
-
-        repository.setUrl( url );
+        String url = getURL(repository);
+        //HACK AGI
+        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        LOG.info("[AGI] opening connection for url  ------->" + url);
+        LOG.info("[AGI] repository id               ------->" + repository.getId());
+        LOG.info("[AGI] userName                    ------->" + authenticationInfo.getUserName());
+        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        //fin HACK AGI
+        repository.setUrl(url);
 
         HttpURL httpURL = null;
 
-        try
-        {
-            httpURL = urlToHttpURL( url );
+        try {
+            httpURL = urlToHttpURL(url);
 
-            if ( hasAuthentication )
-            {
+            //HACK AGI
+            if (httpURL.getScheme()==null){ //Gros hack pour les projets multi-modules (on ne sait pas trop pourquoi)
+                LOG.info("\t[AGI] customisation de l'url "+httpURL);
+                httpURL = urlToHttpURL("http:"+httpURL.toString());
+                LOG.info("\t[AGI] resultat de la customisation de l'url "+httpURL);
+            }
+            //fin HACK AGI
+            if (hasAuthentication) {
                 String userName = authenticationInfo.getUserName();
                 String password = authenticationInfo.getPassword();
 
-                if ( userName != null && password != null )
-                {
-                    httpURL.setUserinfo( userName, password );
+                if (userName != null && password != null) {
+                    httpURL.setUserinfo(userName, password);
                 }
             }
 
-            CorrectedWebdavResource.setDefaultAction( CorrectedWebdavResource.NOACTION );
-            webdavResource = new CorrectedWebdavResource( httpURL );
+            CorrectedWebdavResource.setDefaultAction(CorrectedWebdavResource.NOACTION);
+            webdavResource = new CorrectedWebdavResource(httpURL);
 
-            if ( hasProxy )
-            {
-                
-                
-                webdavResource.setProxy( proxyInfo.getHost(), proxyInfo.getPort() );
-                if ( !StringUtils.isEmpty( proxyInfo.getUserName() ) )
-                {
+            if (hasProxy) {
+
+                webdavResource.setProxy(proxyInfo.getHost(), proxyInfo.getPort());
+                LOG.info("Setting proxy to " + proxyInfo.getHost() + ":" + proxyInfo.getPort());
+                if (!StringUtils.isEmpty(proxyInfo.getUserName())) {
                     UsernamePasswordCredentials proxyCredentials = new UsernamePasswordCredentials();
-                    proxyCredentials.setUserName( proxyInfo.getUserName() );
-                    proxyCredentials.setPassword( proxyInfo.getPassword() );
-                    webdavResource.setProxyCredentials( proxyCredentials );
+                    proxyCredentials.setUserName(proxyInfo.getUserName());
+                    proxyCredentials.setPassword(proxyInfo.getPassword());
+                    webdavResource.setProxyCredentials(proxyCredentials);
+                    LOG.info("Setting proxy credentials to " + proxyInfo.getUserName() + ":" + proxyInfo.getPassword());
                 }
             }
         }
-        catch ( HttpException he )
-        {
-            throw new ConnectionException( "Connection Exception: " + url + " " + he.getReasonCode() + " "
-                + HttpStatus.getStatusText( he.getReasonCode() ), he );
+        catch (HttpException he) {
+            throw new ConnectionException("Connection Exception: " + url + " " + he.getReasonCode() + " "
+                                          + HttpStatus.getStatusText(he.getReasonCode()), he);
         }
-        catch ( URIException urie )
-        {
-            throw new ConnectionException( "Connection Exception: " + urie.getReason(), urie );
+        catch (URIException urie) {
+            throw new ConnectionException("Connection Exception: " + urie.getReason(), urie);
         }
-        catch ( IOException ioe )
-        {
-            throw new ConnectionException( "Connection Exception: " + ioe.getMessage(), ioe );
+        catch (IOException ioe) {
+            throw new ConnectionException("Connection Exception: " + ioe.getMessage(), ioe);
         }
     }
 
+
     /**
      * Closes the connection
-     * 
-     * @throws ConnectionException 
      */
     public void closeConnection()
-        throws ConnectionException
-    {
-        try
-        {
-            if ( webdavResource != null )
-            {
+          throws ConnectionException {
+        try {
+            if (webdavResource != null) {
                 webdavResource.close();
             }
         }
-        catch ( IOException ioe )
-        {
-            throw new ConnectionException( "Connection Exception: " + ioe.getMessage(), ioe );
+        catch (IOException ioe) {
+            throw new ConnectionException("Connection Exception: " + ioe.getMessage(), ioe);
         }
-        finally
-        {
+        finally {
             webdavResource = null;
         }
     }
 
+
     /**
      * Puts a file into the remote repository
      *
-     * @param source the file to transfer
+     * @param source       the file to transfer
      * @param resourceName the name of the resource
-     * @throws TransferFailedException
-     * @throws ResourceDoesNotExistException
-     * @throws AuthorizationException
      */
-    public void put( File source, String resourceName )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
+    public void put(File source, String resourceName)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
         Repository repository = getRepository();
 
         String basedir = repository.getBasedir();
 
-        resourceName = StringUtils.replace( resourceName, "\\", "/" );
-        String dir = PathUtils.dirname( resourceName );
-        dir = StringUtils.replace( dir, "\\", "/" );
+        resourceName = StringUtils.replace(resourceName, "\\", "/");
+        String dir = PathUtils.dirname(resourceName);
+        dir = StringUtils.replace(dir, "\\", "/");
 
         String dest = repository.getUrl();
-        Resource resource = new Resource( resourceName );
+        Resource resource = new Resource(resourceName);
 
-        if ( dest.endsWith( "/" ) )
-        {
+        if (dest.endsWith("/")) {
             dest = dest + resource.getName();
         }
-        else
-        {
+        else {
             dest = dest + "/" + resource.getName();
         }
 
-        firePutInitiated( resource, source );
+        firePutInitiated(resource, source);
         String oldpath = webdavResource.getPath();
 
-        String relpath = getPath( basedir, dir );
+        String relpath = getPath(basedir, dir);
 
-        try
-        {
+        try {
             // Test if dest resource path exist.
-            String cdpath = checkUri( relpath + "/" );
-            webdavResource.setPath( cdpath );
+            String cdpath = checkUri(relpath + "/");
+            webdavResource.setPath(cdpath);
 
-            if ( webdavResource.exists() && !webdavResource.isCollection() )
-            {
+            if (webdavResource.exists() && !webdavResource.isCollection()) {
                 throw new TransferFailedException(
-                    "Destination path exists and is not a WebDAV collection (directory): " + cdpath );
+                      "Destination path exists and is not a WebDAV collection (directory): " + cdpath);
             }
 
-            webdavResource.setPath( oldpath );
+            webdavResource.setPath(oldpath);
 
             // if dest resource path does not exist, create it
-            if ( !webdavResource.exists() )
-            {
+            if (!webdavResource.exists()) {
                 // mkcolMethod() cannot create a directory hierarchy at once,
                 // it has to create each directory one at a time
-                try
-                {
-                    String[] dirs = relpath.split( "/" );
+                try {
+                    String[] dirs = relpath.split("/");
                     String createDir = "/";
 
                     // start at 1 because first element of dirs[] from split() is ""
-                    for ( int count = 1; count < dirs.length; count++ )
-                    {
+                    for (int count = 1; count < dirs.length; count++) {
                         createDir = createDir + dirs[count] + "/";
-                        webdavResource.mkcolMethod( createDir );
+                        webdavResource.mkcolMethod(createDir);
                     }
-                    webdavResource.setPath( oldpath );
+                    webdavResource.setPath(oldpath);
                 }
-                catch ( IOException ioe )
-                {
-                    throw new TransferFailedException( "Failed to create destination WebDAV collection (directory): "
-                        + relpath, ioe );
+                catch (IOException ioe) {
+                    throw new TransferFailedException("Failed to create destination WebDAV collection (directory): "
+                                                      + relpath, ioe);
                 }
             }
         }
-        catch ( IOException e )
-        {
+        catch (IOException e) {
             throw new TransferFailedException(
-                "Failed to create destination WebDAV collection (directory): " + relpath, e );
+                  "Failed to create destination WebDAV collection (directory): " + relpath, e);
         }
 
-        try
-        {
+        try {
             // Put source into destination path.
-            firePutStarted( resource, source );
+            firePutStarted(resource, source);
 
-            InputStream is = new PutInputStream( source, resource, this, getTransferEventSupport() );
-            boolean success = webdavResource.putMethod( dest, is, (int) source.length() );
+            InputStream is = new PutInputStream(source, resource, this, getTransferEventSupport());
+            boolean success = webdavResource.putMethod(dest, is, (int)source.length());
             int statusCode = webdavResource.getStatusCode();
 
-            switch ( statusCode )
-            {
+            switch (statusCode) {
                 case HttpStatus.SC_OK:
                     break;
 
@@ -296,188 +272,168 @@ public class WebDavWagon
                     break;
 
                 case HttpStatus.SC_FORBIDDEN:
-                    throw new AuthorizationException( "Access denied to: " + dest );
+                    throw new AuthorizationException("Access denied to: " + dest);
 
                 case HttpStatus.SC_NOT_FOUND:
-                    throw new ResourceDoesNotExistException( "File: " + dest + " does not exist" );
+                    throw new ResourceDoesNotExistException("File: " + dest + " does not exist");
 
                 case HttpStatus.SC_LENGTH_REQUIRED:
-                    throw new ResourceDoesNotExistException( "Transfer failed, server requires Content-Length." );
+                    throw new ResourceDoesNotExistException("Transfer failed, server requires Content-Length.");
 
                     //add more entries here
                 default:
-                    if ( !success )
-                    {
-                        throw new TransferFailedException( "Failed to transfer file: " + dest + ". Return code is: "
-                            + statusCode + " " + HttpStatus.getStatusText( statusCode ) );
+                    if (!success) {
+                        throw new TransferFailedException("Failed to transfer file: " + dest + ". Return code is: "
+                                                          + statusCode + " " + HttpStatus.getStatusText(statusCode));
                     }
             }
         }
-        catch ( FileNotFoundException e )
-        {
-            throw new TransferFailedException( "Specified source file does not exist: " + source, e );
+        catch (FileNotFoundException e) {
+            throw new TransferFailedException("Specified source file does not exist: " + source, e);
         }
-        catch ( IOException e )
-        {
-            fireTransferError( resource, e, TransferEvent.REQUEST_PUT );
+        catch (IOException e) {
+            fireTransferError(resource, e, TransferEvent.REQUEST_PUT);
 
             String msg = "PUT request for: " + resource + " to " + source.getName() + " failed";
 
-            throw new TransferFailedException( msg, e );
+            throw new TransferFailedException(msg, e);
         }
-        firePutCompleted( resource, source );
+        firePutCompleted(resource, source);
     }
+
 
     /**
      * Converts a String url to an HttpURL
      *
      * @param url String url to convert to an HttpURL
+     *
      * @return an HttpURL object created from the String url
-     * @throws URIException
      */
-    private HttpURL urlToHttpURL( String url )
-        throws URIException
-    {
-        if ( url.startsWith( "https" ) )
-        {
-            return new HttpsURL( url );
+    public  HttpURL urlToHttpURL(String url)
+          throws URIException {
+        if (url.startsWith("https")) {
+            return new HttpsURL(url);
         }
-        else
-        {
-            return new HttpURL( url );
+        else {
+            return new HttpURL(url);
         }
     }
+
 
     /**
      * Determine which URI to use at the prompt.
      *
      * @param uri the path to be set.
+     *
      * @return the absolute path.
      */
-    private String checkUri( String uri )
-        throws IOException
-    {
+    private String checkUri(String uri)
+          throws IOException {
 
-        if ( webdavResource == null )
-        {
-            throw new IOException( "Not connected yet." );
+        if (webdavResource == null) {
+            throw new IOException("Not connected yet.");
         }
 
-        if ( uri == null )
-        {
+        if (uri == null) {
             uri = webdavResource.getPath();
         }
 
-        return FileUtils.normalize( uri );
+        return FileUtils.normalize(uri);
     }
 
-    public void get( String resourceName, File destination )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
-        get( resourceName, destination, 0 );
 
+    public void get(String resourceName, File destination)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        get(resourceName, destination, 0);
     }
 
-    public boolean getIfNewer( String resourceName, File destination, long timestamp )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
-        return get( resourceName, destination, timestamp );
+
+    public boolean getIfNewer(String resourceName, File destination, long timestamp)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        return get(resourceName, destination, timestamp);
     }
+
 
     /**
      * Get a file from remote server
-     * 
-     * @param resourceName
-     * @param destination
+     *
      * @param timestamp the timestamp to check against, only downloading if newer. If <code>0</code>, always download
+     *
      * @return <code>true</code> if newer version was downloaded, <code>false</code> otherwise.
-     * @throws TransferFailedException
-     * @throws ResourceDoesNotExistException
-     * @throws AuthorizationException
      */
-    public boolean get( String resourceName, File destination, long timestamp )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
-        Resource resource = new Resource( resourceName );
+    public boolean get(String resourceName, File destination, long timestamp)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        Resource resource = new Resource(resourceName);
 
-        fireGetInitiated( resource, destination );
+        fireGetInitiated(resource, destination);
 
         String url = getRepository().getUrl() + "/" + resourceName;
 
-        webdavResource.addRequestHeader( "X-wagon-provider", "wagon-webdav" );
-        webdavResource.addRequestHeader( "X-wagon-version", wagonVersion );
+        webdavResource.addRequestHeader("X-wagon-provider", "wagon-webdav");
+        webdavResource.addRequestHeader("X-wagon-version", wagonVersion);
 
-        webdavResource.addRequestHeader( "Cache-control", "no-cache" );
-        webdavResource.addRequestHeader( "Cache-store", "no-store" );
-        webdavResource.addRequestHeader( "Pragma", "no-cache" );
-        webdavResource.addRequestHeader( "Expires", "0" );
-        webdavResource.addRequestHeader( "Accept-Encoding", "gzip" );
+        webdavResource.addRequestHeader("Cache-control", "no-cache");
+        webdavResource.addRequestHeader("Cache-store", "no-store");
+        webdavResource.addRequestHeader("Pragma", "no-cache");
+        webdavResource.addRequestHeader("Expires", "0");
+        webdavResource.addRequestHeader("Accept-Encoding", "gzip");
 
-        if ( timestamp > 0 )
-        {
-            webdavResource.addRequestHeader( "If-Modified-Since", dateFormat.format( new Date( timestamp ) ) );
+        if (timestamp > 0) {
+            webdavResource.addRequestHeader("If-Modified-Since", dateFormat.format(new Date(timestamp)));
         }
 
         InputStream is = null;
-        OutputStream output = new LazyFileOutputStream( destination );
-        try
-        {
-            is = webdavResource.getMethodData( url );
-            getTransfer( resource, destination, is );
+        OutputStream output = new LazyFileOutputStream(destination);
+        try {
+            is = webdavResource.getMethodData(url);
+            getTransfer(resource, destination, is);
         }
-        catch ( HttpException e )
-        {
-            fireTransferError( resource, e, TransferEvent.REQUEST_GET );
-            throw new TransferFailedException( "Failed to transfer file: " + url + ".  Return code is: "
-                + e.getReasonCode(), e );
+        catch (HttpException e) {
+            fireTransferError(resource, e, TransferEvent.REQUEST_GET);
+            throw new TransferFailedException("Failed to transfer file: " + url + ".  Return code is: "
+                                              + e.getReasonCode(), e);
         }
-        catch ( IOException e )
-        {
-            fireTransferError( resource, e, TransferEvent.REQUEST_GET );
+        catch (IOException e) {
+            fireTransferError(resource, e, TransferEvent.REQUEST_GET);
 
-            if ( destination.exists() )
-            {
+            if (destination.exists()) {
                 boolean deleted = destination.delete();
 
-                if ( !deleted )
-                {
+                if (!deleted) {
                     destination.deleteOnExit();
                 }
             }
 
             int statusCode = webdavResource.getStatusCode();
-            switch ( statusCode )
-            {
+            switch (statusCode) {
                 case HttpStatus.SC_NOT_MODIFIED:
                     return false;
 
                 case HttpStatus.SC_FORBIDDEN:
-                    throw new AuthorizationException( "Access denied to: " + url );
+                    throw new AuthorizationException("Access denied to: " + url);
 
                 case HttpStatus.SC_UNAUTHORIZED:
-                    throw new AuthorizationException( "Not authorized." );
+                    throw new AuthorizationException("Not authorized.");
 
                 case HttpStatus.SC_PROXY_AUTHENTICATION_REQUIRED:
-                    throw new AuthorizationException( "Not authorized by proxy." );
+                    throw new AuthorizationException("Not authorized by proxy.");
 
                 case HttpStatus.SC_NOT_FOUND:
-                    throw new ResourceDoesNotExistException( "File: " + url + " does not exist" );
+                    throw new ResourceDoesNotExistException("File: " + url + " does not exist");
 
                 default:
-                    throw new TransferFailedException( "Failed to transfer file: " + url + ". Return code is: "
-                        + statusCode, e );
+                    throw new TransferFailedException("Failed to transfer file: " + url + ". Return code is: "
+                                                      + statusCode, e);
             }
         }
-        finally
-        {
-            IOUtil.close( is );
-            IOUtil.close( output );
+        finally {
+            IOUtil.close(is);
+            IOUtil.close(output);
         }
 
         int statusCode = webdavResource.getStatusCode();
 
-        switch ( statusCode )
-        {
+        switch (statusCode) {
             case HttpStatus.SC_OK:
                 return true;
 
@@ -485,171 +441,148 @@ public class WebDavWagon
                 return false;
 
             case HttpStatus.SC_FORBIDDEN:
-                throw new AuthorizationException( "Access denied to: " + url );
+                throw new AuthorizationException("Access denied to: " + url);
 
             case HttpStatus.SC_UNAUTHORIZED:
-                throw new AuthorizationException( "Not authorized." );
+                throw new AuthorizationException("Not authorized.");
 
             case HttpStatus.SC_PROXY_AUTHENTICATION_REQUIRED:
-                throw new AuthorizationException( "Not authorized by proxy." );
+                throw new AuthorizationException("Not authorized by proxy.");
 
             case HttpStatus.SC_NOT_FOUND:
-                throw new ResourceDoesNotExistException( "File: " + url + " does not exist" );
+                throw new ResourceDoesNotExistException("File: " + url + " does not exist");
 
             default:
-                throw new TransferFailedException( "Failed to transfer file: " + url + ". Return code is: "
-                    + statusCode );
+                throw new TransferFailedException("Failed to transfer file: " + url + ". Return code is: "
+                                                  + statusCode);
         }
-
     }
 
-    private String getURL( Repository repository )
-    {
+
+    private String getURL(Repository repository) {
         String url = repository.getUrl();
         String s = "dav:";
-        if ( url.startsWith( s ) )
-        {
-            return url.substring( s.length() );
+        if (url.startsWith(s)) {
+            return url.substring(s.length());
         }
-        else
-        {
+        else {
             return url;
         }
     }
 
+
     /**
      * This wagon supports directory copying
-     * 
+     *
      * @return <code>true</code> always
      */
-    public boolean supportsDirectoryCopy()
-    {
+    public boolean supportsDirectoryCopy() {
         return true;
     }
 
+
     /**
      * Copy a directory from local system to remote webdav server
-     * 
-     * @param sourceDirectory the local directory
+     *
+     * @param sourceDirectory      the local directory
      * @param destinationDirectory the remote destination
-     * @throws TransferFailedException
-     * @throws ResourceDoesNotExistException
-     * @throws AuthorizationException
      */
-    public void putDirectory( File sourceDirectory, String destinationDirectory )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
+    public void putDirectory(File sourceDirectory, String destinationDirectory)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
 
         File[] listFiles = sourceDirectory.listFiles();
 
-        for ( int i = 0; i < listFiles.length; i++ )
-        {
-            if ( listFiles[i].isDirectory() )
-            {
-                putDirectory( listFiles[i], destinationDirectory + "/" + listFiles[i].getName() );
+        for (int i = 0; i < listFiles.length; i++) {
+            if (listFiles[i].isDirectory()) {
+                putDirectory(listFiles[i], destinationDirectory + "/" + listFiles[i].getName());
             }
-            else
-            {
+            else {
                 String target = destinationDirectory + "/" + listFiles[i].getName();
 
-                put( listFiles[i], target );
+                put(listFiles[i], target);
             }
         }
-
     }
 
-    public List getFileList( String destinationDirectory )
-        throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException
-    {
-        webdavResource.addRequestHeader( "X-wagon-provider", "wagon-webdav" );
-        webdavResource.addRequestHeader( "X-wagon-version", wagonVersion );
 
-        webdavResource.addRequestHeader( "Cache-control", "no-cache" );
-        webdavResource.addRequestHeader( "Cache-store", "no-store" );
-        webdavResource.addRequestHeader( "Pragma", "no-cache" );
-        webdavResource.addRequestHeader( "Expires", "0" );
+    public List getFileList(String destinationDirectory)
+          throws TransferFailedException, ResourceDoesNotExistException, AuthorizationException {
+        webdavResource.addRequestHeader("X-wagon-provider", "wagon-webdav");
+        webdavResource.addRequestHeader("X-wagon-version", wagonVersion);
+
+        webdavResource.addRequestHeader("Cache-control", "no-cache");
+        webdavResource.addRequestHeader("Cache-store", "no-store");
+        webdavResource.addRequestHeader("Pragma", "no-cache");
+        webdavResource.addRequestHeader("Expires", "0");
 
         String basedir = repository.getBasedir();
 
-        if ( !destinationDirectory.endsWith( "/" ) )
-        {
+        if (!destinationDirectory.endsWith("/")) {
             destinationDirectory += "/";
         }
 
-        String cleanDestDir = StringUtils.replace( destinationDirectory, "\\", "/" );
-        String dir = PathUtils.dirname( cleanDestDir );
-        dir = StringUtils.replace( dir, "\\", "/" );
+        String cleanDestDir = StringUtils.replace(destinationDirectory, "\\", "/");
+        String dir = PathUtils.dirname(cleanDestDir);
+        dir = StringUtils.replace(dir, "\\", "/");
 
         String oldpath = webdavResource.getPath();
-        String relpath = getPath( basedir, dir );
+        String relpath = getPath(basedir, dir);
 
-        try
-        {
+        try {
             // Test if dest resource path exist.
-            String cdpath = checkUri( relpath + "/" );
-            webdavResource.setPath( cdpath );
+            String cdpath = checkUri(relpath + "/");
+            webdavResource.setPath(cdpath);
 
-            try
-            {
-                webdavResource.setProperties( WebdavResource.NAME, DepthSupport.DEPTH_0 );
+            try {
+                webdavResource.setProperties(WebdavResource.NAME, DepthSupport.DEPTH_0);
 
                 /* seems this is not needed as Webdav client causes a 404 error in webdavResource.setProperties */
-                if ( !webdavResource.exists() )
-                {
-                    throw new ResourceDoesNotExistException( "Destination directory does not exist: " + cdpath );
+                if (!webdavResource.exists()) {
+                    throw new ResourceDoesNotExistException("Destination directory does not exist: " + cdpath);
                 }
 
-                if ( !webdavResource.isCollection() )
-                {
-                    throw new ResourceDoesNotExistException( "Destination path exists but is not a "
-                        + "WebDAV collection (directory): " + cdpath );
+                if (!webdavResource.isCollection()) {
+                    throw new ResourceDoesNotExistException("Destination path exists but is not a "
+                                                            + "WebDAV collection (directory): " + cdpath);
                 }
 
                 String[] entries = webdavResource.list();
 
                 List filelist = new ArrayList();
-                if ( entries != null )
-                {
-                    filelist.addAll( Arrays.asList( entries ) );
+                if (entries != null) {
+                    filelist.addAll(Arrays.asList(entries));
                 }
 
                 return filelist;
             }
-            catch ( HttpException e )
-            {
-                if ( e.getReasonCode() == HttpStatus.SC_NOT_FOUND )
-                {
-                    throw new ResourceDoesNotExistException( "Destination directory does not exist: " + cdpath, e );
+            catch (HttpException e) {
+                if (e.getReasonCode() == HttpStatus.SC_NOT_FOUND) {
+                    throw new ResourceDoesNotExistException("Destination directory does not exist: " + cdpath, e);
                 }
-                else
-                {
-                    throw new TransferFailedException( "Unable to obtain file list from WebDAV collection, "
-                        + "HTTP error: " + HttpStatus.getStatusText( e.getReasonCode() ), e );
+                else {
+                    throw new TransferFailedException("Unable to obtain file list from WebDAV collection, "
+                                                      + "HTTP error: " + HttpStatus.getStatusText(e.getReasonCode()),
+                                                      e);
                 }
             }
-            finally
-            {
-                webdavResource.setPath( oldpath );
+            finally {
+                webdavResource.setPath(oldpath);
             }
-
         }
-        catch ( IOException e )
-        {
-            throw new TransferFailedException( "Unable to obtain file list from WebDAV collection.", e );
+        catch (IOException e) {
+            throw new TransferFailedException("Unable to obtain file list from WebDAV collection.", e);
         }
     }
 
-    public boolean resourceExists( String resourceName )
-        throws TransferFailedException, AuthorizationException
-    {
-        try
-        {
-            String parentDirectory = PathUtils.dirname( resourceName );
-            List entries = getFileList( parentDirectory );
-            return entries.contains( resourceName );
+
+    public boolean resourceExists(String resourceName)
+          throws TransferFailedException, AuthorizationException {
+        try {
+            String parentDirectory = PathUtils.dirname(resourceName);
+            List entries = getFileList(parentDirectory);
+            return entries.contains(resourceName);
         }
-        catch ( ResourceDoesNotExistException e )
-        {
+        catch (ResourceDoesNotExistException e) {
             return false;
         }
     }
