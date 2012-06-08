@@ -16,13 +16,6 @@ public class AgiHttpUtil {
         // Configure proxySettings if it is required
         //See http://jira.codehaus.org/browse/WAGON-82
 
-//        String login = "agif";
-//        String password = "SFQSQDQ";
-//        String proxyUser = "GROUPE\\MARCONA";
-//        String proxyPassword = "XXXX";
-//        String proxyHost = "ehttp1";
-//        int proxyPort = 80;
-
         NewHttpServerCredential newHttpServerCredential = buildCredentialsFromSettings();
 
         String login = newHttpServerCredential.getUserName();

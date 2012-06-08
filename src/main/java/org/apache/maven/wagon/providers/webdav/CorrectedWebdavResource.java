@@ -56,17 +56,16 @@ public class CorrectedWebdavResource
           throws IOException {
         super(url,DepthSupport.DEPTH_INFINITY);
         //HACK AGI
-        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-        LOG.info("[AGI] Customizing http client with proxy info");
+        LOG.finest("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        LOG.finest("[AGI] Customizing http client with proxy info");
         try {
             AgiHttpUtil.customizeHttpClient(client);
         }
         catch (Exception e) {
-            LOG.info("[AGI] error while customizing http client with AGI proxy");
-            LOG.info("[AGI] errorMessage: " + e.getMessage());
-            e.printStackTrace();
+            LOG.finest("[AGI] error while customizing http client with AGI proxy");
+            LOG.finest("[AGI] errorMessage: " + e.getMessage());
         }
-        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        LOG.finest("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
         //fin HACK AGI
         setFollowRedirects(true); // TODO: Make this configurable.
     }

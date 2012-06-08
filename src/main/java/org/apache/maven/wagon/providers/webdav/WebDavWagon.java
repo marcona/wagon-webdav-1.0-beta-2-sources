@@ -110,11 +110,11 @@ public class WebDavWagon
 
         String url = getURL(repository);
         //HACK AGI
-        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
-        LOG.info("[AGI] opening connection for url  ------->" + url);
-        LOG.info("[AGI] repository id               ------->" + repository.getId());
-        LOG.info("[AGI] userName                    ------->" + authenticationInfo.getUserName());
-        LOG.info("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        LOG.finest("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        LOG.finest("[AGI] opening connection for url  ------->" + url);
+        LOG.finest("[AGI] repository id               ------->" + repository.getId());
+        LOG.finest("[AGI] userName                    ------->" + authenticationInfo.getUserName());
+        LOG.finest("[AGI] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
         //fin HACK AGI
         repository.setUrl(url);
 
@@ -125,9 +125,9 @@ public class WebDavWagon
 
             //HACK AGI
             if (httpURL.getScheme()==null){ //Gros hack pour les projets multi-modules (on ne sait pas trop pourquoi)
-                LOG.info("\t[AGI] customisation de l'url "+httpURL);
+                LOG.finest("\t[AGI] customisation de l'url "+httpURL);
                 httpURL = urlToHttpURL("http:"+httpURL.toString());
-                LOG.info("\t[AGI] resultat de la customisation de l'url "+httpURL);
+                LOG.finest("\t[AGI] resultat de la customisation de l'url "+httpURL);
             }
             //fin HACK AGI
             if (hasAuthentication) {
